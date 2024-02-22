@@ -1,16 +1,17 @@
 package main
 
 import (
-    "flag"
-		"fmt"
-    "log"
-    "net/http"
-		"regexp"
-		"os"
-		"os/exec"
-		"strings"
-		"github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"regexp"
+	"strings"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 
 type aptOriginArchKey struct {
 	origin string
-	arch string
+	arch   string
 }
 
 func (k aptOriginArchKey) getOriginArch() (string, string) {
@@ -27,33 +28,33 @@ func (k aptOriginArchKey) getOriginArch() (string, string) {
 }
 
 var (
-    listenAddress = flag.String("web.listen-address", ":9888", "Address to listen on for web interface.")
-    metricPath    = flag.String("web.metrics-path", "/metrics", "Path under which to expose metrics.")
+	listenAddress = flag.String("web.listen-address", ":9888", "Address to listen on for web interface.")
+	metricPath    = flag.String("web.metrics-path", "/metrics", "Path under which to expose metrics.")
 )
 
 type yumCollector struct {
-	packagesPending *prometheus.Desc
+	packagesPending  *prometheus.Desc
 	packagesObsolete *prometheus.Desc
-	rebootRequired *prometheus.Desc
+	rebootRequired   *prometheus.Desc
 }
 
 type aptCollector struct {
-	packagesPending *prometheus.Desc
+	packagesPending    *prometheus.Desc
 	packagesAutoremove *prometheus.Desc
-	rebootRequired *prometheus.Desc
+	rebootRequired     *prometheus.Desc
 }
 
 func newYumCollector() *yumCollector {
 	return &yumCollector{
-		packagesPending: prometheus.NewDesc(prometheus.BuildFQName(namespace, "","yum_packages_pending"),
+		packagesPending: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "yum_packages_pending"),
 			"Number of packages pending for update by YUM",
 			[]string{"origin"}, nil,
 		),
-		packagesObsolete: prometheus.NewDesc(prometheus.BuildFQName(namespace, "","yum_packages_obsolete"),
+		packagesObsolete: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "yum_packages_obsolete"),
 			"Number of obsolete packages",
 			[]string{"origin"}, nil,
 		),
-		rebootRequired: prometheus.NewDesc(prometheus.BuildFQName(namespace, "","yum_reboot_required"),
+		rebootRequired: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "yum_reboot_required"),
 			"Reboot required",
 			nil, nil,
 		),
@@ -62,15 +63,15 @@ func newYumCollector() *yumCollector {
 
 func newAptCollector() *aptCollector {
 	return &aptCollector{
-		packagesPending: prometheus.NewDesc(prometheus.BuildFQName(namespace, "","apt_packages_pending"),
+		packagesPending: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "apt_packages_pending"),
 			"Number of packages pending for update by APT",
 			[]string{"origin", "arch"}, nil,
 		),
-		packagesAutoremove: prometheus.NewDesc(prometheus.BuildFQName(namespace, "","apt_autoremove_pending"),
+		packagesAutoremove: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "apt_autoremove_pending"),
 			"Number of pending autoremove packages by APT",
 			nil, nil,
 		),
-		rebootRequired: prometheus.NewDesc(prometheus.BuildFQName(namespace, "","apt_reboot_required"),
+		rebootRequired: prometheus.NewDesc(prometheus.BuildFQName(namespace, "", "apt_reboot_required"),
 			"Reboot required",
 			nil, nil,
 		),
@@ -253,9 +254,9 @@ func getYumRebootRequired() (int, error) {
 func getAptRebootRequired() (int, error) {
 	if _, err := os.Stat("/run/reboot-required"); err == nil {
 		return 1, nil
- 	} else {
+	} else {
 		return 0, nil
- 	}
+	}
 }
 
 func getPackageManager() (string, error) {
@@ -263,14 +264,14 @@ func getPackageManager() (string, error) {
 	cmd := exec.Command("apt-get", "--version")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
-			return "apt", nil
+		return "apt", nil
 	}
 
 	// Try yum next
 	cmd = exec.Command("yum", "--version")
 	output, err = cmd.CombinedOutput()
 	if err == nil {
-			return "yum", nil
+		return "yum", nil
 	}
 
 	// If neither apt-get nor yum were found, return an error
@@ -278,25 +279,25 @@ func getPackageManager() (string, error) {
 }
 
 func main() {
-		packageManager, err := getPackageManager()
-		if err != nil {
-				log.Println("Error:", err)
-				return
-		}
-		if packageManager == "yum" {
-			collector := newYumCollector()
-			prometheus.MustRegister(collector)
-		} else {
-			collector := newAptCollector()
-			prometheus.MustRegister(collector)
-		}
-    log.Fatal(serverMetrics(*listenAddress, *metricPath))
+	packageManager, err := getPackageManager()
+	if err != nil {
+		log.Println("Error:", err)
+		return
+	}
+	if packageManager == "yum" {
+		collector := newYumCollector()
+		prometheus.MustRegister(collector)
+	} else {
+		collector := newAptCollector()
+		prometheus.MustRegister(collector)
+	}
+	log.Fatal(serverMetrics(*listenAddress, *metricPath))
 }
 
 func serverMetrics(listenAddress, metricsPath string) error {
-    http.Handle(metricsPath, promhttp.Handler())
-    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        w.Write([]byte(`
+	http.Handle(metricsPath, promhttp.Handler())
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`
             <html>
             <head><title>Package Metrics</title></head>
             <body>
@@ -305,6 +306,6 @@ func serverMetrics(listenAddress, metricsPath string) error {
             </body>
             </html>
         `))
-    })
-    return http.ListenAndServe(listenAddress, nil)
+	})
+	return http.ListenAndServe(listenAddress, nil)
 }
