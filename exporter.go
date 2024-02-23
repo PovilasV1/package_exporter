@@ -145,30 +145,31 @@ func (collector *aptCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(collector.rebootRequired, prometheus.GaugeValue, float64(rebootRequired))
 }
 
-func Register() {
-	collector := newYumCollector()
-	prometheus.MustRegister(collector)
-}
-
 func getYumPendingPackages() (map[string][]string, error) {
 	cmd := exec.Command("/usr/bin/yum", "check-update", "--quiet")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, err
-	}
-
-	lines := strings.Split(string(output), "\n")
-	packagesPerOrigin := make(map[string][]string)
-
-	for _, line := range lines {
-		if strings.Contains(line, ".") {
-			parts := strings.Fields(line)
-			packageName := parts[0]
-			origin := parts[2]
-			packagesPerOrigin[origin] = append(packagesPerOrigin[origin], packageName)
+		if err.Error() != "exit status 100" {
+			return nil, err
 		}
 	}
-	return packagesPerOrigin, nil
+
+	if len(output) > 0 {
+		lines := strings.Split(string(output), "\n")
+		packagesPerOrigin := make(map[string][]string)
+
+		for _, line := range lines {
+			if strings.Contains(line, ".") {
+				parts := strings.Fields(line)
+				packageName := parts[0]
+				origin := parts[2]
+				packagesPerOrigin[origin] = append(packagesPerOrigin[origin], packageName)
+			}
+		}
+		return packagesPerOrigin, nil
+	} else {
+		return nil, nil
+	}
 }
 
 func getAptPendingPackages() (map[aptOriginArchKey][]string, error) {
@@ -177,26 +178,29 @@ func getAptPendingPackages() (map[aptOriginArchKey][]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(output) > 0 {
+		lines := strings.Split(string(output), "\n")
+		packagesPerOrigin := make(map[aptOriginArchKey][]string)
+		instRegex := regexp.MustCompile(`^Inst`)
+		re := regexp.MustCompile(`\(([^)]+)\)`)
+		packageRegex := regexp.MustCompile(`\s([\S\s]+?)\s`)
 
-	lines := strings.Split(string(output), "\n")
-	packagesPerOrigin := make(map[aptOriginArchKey][]string)
-	instRegex := regexp.MustCompile(`^Inst`)
-	re := regexp.MustCompile(`\(([^)]+)\)`)
-	packageRegex := regexp.MustCompile(`\s([\S\s]+?)\s`)
-
-	for _, line := range lines {
-		if instRegex.MatchString(line) {
-			packageName := packageRegex.FindStringSubmatch(line)[1]
-			match := re.FindStringSubmatch(line)
-			origins := strings.Split(match[1], " ")[1:]
-			originString := strings.Join(origins[:len(origins)-1], " ")
-			origin := strings.ReplaceAll(originString, ", ", ",")
-			arch := strings.Trim(origins[len(origins)-1], "[]")
-			key := aptOriginArchKey{origin, arch}
-			packagesPerOrigin[key] = append(packagesPerOrigin[key], packageName)
+		for _, line := range lines {
+			if instRegex.MatchString(line) {
+				packageName := packageRegex.FindStringSubmatch(line)[1]
+				match := re.FindStringSubmatch(line)
+				origins := strings.Split(match[1], " ")[1:]
+				originString := strings.Join(origins[:len(origins)-1], " ")
+				origin := strings.ReplaceAll(originString, ", ", ",")
+				arch := strings.Trim(origins[len(origins)-1], "[]")
+				key := aptOriginArchKey{origin, arch}
+				packagesPerOrigin[key] = append(packagesPerOrigin[key], packageName)
+			}
 		}
+		return packagesPerOrigin, nil
+	} else {
+		return nil, nil
 	}
-	return packagesPerOrigin, nil
 }
 
 func getYumObsoletePackages() (map[string][]string, error) {
@@ -205,21 +209,24 @@ func getYumObsoletePackages() (map[string][]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(output) > 0 {
+		lines := strings.Split(string(output), "\n")
+		packagesPerOrigin := make(map[string][]string)
 
-	lines := strings.Split(string(output), "\n")
-	packagesPerOrigin := make(map[string][]string)
-
-	for _, line := range lines {
-		if strings.Contains(line, ".") {
-			if !strings.HasPrefix(line, "    ") {
-				parts := strings.Fields(line)
-				packageName := parts[0]
-				origin := parts[2]
-				packagesPerOrigin[origin] = append(packagesPerOrigin[origin], packageName)
+		for _, line := range lines {
+			if strings.Contains(line, ".") {
+				if !strings.HasPrefix(line, "    ") {
+					parts := strings.Fields(line)
+					packageName := parts[0]
+					origin := parts[2]
+					packagesPerOrigin[origin] = append(packagesPerOrigin[origin], packageName)
+				}
 			}
 		}
+		return packagesPerOrigin, nil
+	} else {
+		return nil, nil
 	}
-	return packagesPerOrigin, nil
 }
 
 func getAptAutoremovePackages() (int, error) {
@@ -228,15 +235,18 @@ func getAptAutoremovePackages() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
-	count := 0
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "Remv") {
-			count++
+	if len(output) < 0 {
+		count := 0
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "Remv") {
+				count++
+			}
 		}
+		return count, nil
+	} else {
+		return 0, nil
 	}
-	return count, nil
 }
 
 func getYumRebootRequired() (int, error) {
